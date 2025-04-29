@@ -49,6 +49,7 @@ class UniqueRandomNumberGenerator:
         # Keep trying to generate a number that hasn't been used
         while True:
             new_number = random.randint(self.min_num, self.max_num)
+            print(new_number,"generated")
             if new_number not in self.used_numbers_set:
                 self.used_numbers_set.add(new_number)
                 self.used_numbers_list.append(new_number)
