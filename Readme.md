@@ -2,6 +2,9 @@
 
 This project provides a FastAPI server that generates unique random numbers (integers or floats) with support for concurrent requests. Each number is guaranteed to be unique and will not be repeated, even if the server is restarted. The numbers are persisted across restarts in an SQLite database with optimizations for concurrent access.
 
+AddON: The repository contains multiple implementations of HTTP servers. This particular implementation (scalable_http_server) focuses on scalability and performance, supporting millions of concurrent requests while ensuring global uniqueness of random numbers.
+
+
 ## Logic
 
 The server uses an asynchronous SQLite database with Write-Ahead Logging (WAL) to efficiently store already-generated numbers, ensuring that each number is unique. When a request comes in, the server generates a random number and attempts to insert it into the database. If the insertion fails due to a duplicate, the server will retry with new numbers up to a maximum number of attempts (10 in our case). This approach ensures that the server can handle a large number of concurrent requests without repeating any numbers.

@@ -1,7 +1,7 @@
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from typing import Union
-import asyncio # asyncio is used for async sleep between retries
+import asyncio  # asyncio is used for async sleep between retries
 
 # Import custom database and random number generator classes
 from utils.db_utils import DatabaseHandler
@@ -18,8 +18,11 @@ db_handler = DatabaseHandler(DB_FILE)
 rng = RandomNumberGenerator()
 
 # Define the response model for the /random endpoint
+
+
 class RandomNumberResponse(BaseModel):
     number: Union[int, float]
+
 
 # This function runs once at app startup to initialize the database
 @app.on_event("startup")
@@ -28,6 +31,8 @@ async def startup_event():
     await db_handler.init_db()
 
 # This is the API endpoint to get a unique random number
+
+
 @app.get("/random", response_model=RandomNumberResponse)
 async def get_random_number(type: str = "int"):
     """
@@ -52,10 +57,13 @@ async def get_random_number(type: str = "int"):
     )
 
 # This is the entry point for running the app using Uvicorn directly
+
+
 def main():
     import uvicorn
     # Launch FastAPI app on localhost at port 5000 with auto-reload
     uvicorn.run("main_http_server:app", host="127.0.0.1", port=5000, reload=True)
+
 
 # Ensures the app runs only if this file is executed directly
 if __name__ == "__main__":
