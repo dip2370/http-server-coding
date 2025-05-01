@@ -1,37 +1,37 @@
-Unique Random Number HTTP API Server
+*************Unique Random Number HTTP API Server************
 This project provides a set of Python server implementations to generate globally unique random numbers (both integers and floats) via an HTTP API endpoint, always returning a JSON response. There are four progressive implementations included, each demonstrating a different architectural approach to the problem.
 
-1. Simple HTTP Server
+#### 1. Simple HTTP Server
 A synchronous HTTP server that serves unique random numbers at the /random endpoint. It uses a local JSON file (used_numbers.json) to persist previously served numbers, ensuring uniqueness across sessions. Supports an optional type=float query parameter to return floats.
 
-How to Run:
+  ==> How to Run:
+  
+  python simple_unique_random_http_server/main_http_server.py
+  Starts the server on http://localhost:5000.
 
-
-python simple_unique_random_http_server/main_http_server.py
-Starts the server on http://localhost:5000.
-
-Check HTTP Server:
-
-http://localhost:5000/random
-
-http://localhost:5000/random?type=float
+  ==> Check HTTP Server:
+  
+  http://localhost:5000/random
+  
+  http://localhost:5000/random?type=float
 
 Logic:
+
 Each request checks whether the client wants an integer or float. It tries up to 100 times to generate a number not found in the JSON-based store. If successful, the number is added to the store and returned. If not, a 503 error is returned. Unrecognized paths return a 404.
 
 
 
-2. Unique Random Number HTTP Server Using FastAPI (Synchronous, File-Based Persistence)
+#### 2. Unique Random Number HTTP Server Using FastAPI (Synchronous, File-Based Persistence)
 
 Description:
 A FastAPI-based version of the above server with the same logic and file-based persistence, but improved structure, validation, and maintainability. Responses and API behaviors are defined using FastAPI's features.
 
-How to Run:
-
+==>  How to Run:
 
 cd simple_unique_random_http_server_fastapi
 uvicorn main_http_server:app --port 8000 --reload
-Check HTTP Server:
+
+==> Check HTTP Server:
 
 http://127.0.0.1:8000/random
 
@@ -45,13 +45,12 @@ Cleaner structure, easier extensibility, and built-in support for validation and
 
 
 
-3. Async Unique Random Number HTTP Server Using FastAPI and SQLite
+#### 3. Async Unique Random Number HTTP Server Using FastAPI and SQLite
 What it does:
 This implementation builds a high-performance, production-ready HTTP API server using FastAPI in combination with SQLite and asynchronous I/O via aiosqlite. The server exposes a /random endpoint that returns a globally unique random number, either an integer or a float based on the type query parameter. Internally, it persists all generated numbers in a SQLite database with a unique constraint, ensuring no duplication across requests or restarts. As it leverages non-blocking asynchronous database operations, this version is well-suited for handling concurrent requests efficiently while preserving global uniqueness guarantees.
 
-How to run:
-Navigate to the async_unique_random_http_server_fastapi_sqlite directory and start the server with:
-
+==> How to run:
+cd async_unique_random_http_server_fastapi_sqlite directory and start the server with:
 
 uvicorn main_http_server:app --port 5000 --reload
 Alternatively, if you're executing the script directly, it includes a main() function, so you can also run it like this:
@@ -60,12 +59,9 @@ Alternatively, if you're executing the script directly, it includes a main() fun
 python main_http_server.py
 This will start the FastAPI app on http://127.0.0.1:5000.
 
-How to check the HTTP server:
-To check the server’s response, simply open your browser or use a tool like curl and visit:
+==>  How to check the HTTP server:
+To check the server’s response, simply open your browser and visit:
 
-arduino
-Copy
-Edit
 http://127.0.0.1:5000/random
 To get a float instead of an integer, append the query parameter like this:
 
@@ -80,12 +76,12 @@ Benefits over previous code:
 This implementation offers significant improvements over both the basic synchronous HTTP server and the synchronous FastAPI variant. Firstly, the use of SQLite as a backing store for persistence is more robust and scalable than a flat JSON file, especially as the dataset grows. Secondly, the use of asynchronous I/O with FastAPI and aiosqlite enables the server to handle many simultaneous requests without blocking on file or database locks. This means better performance under load, fewer race conditions, and improved concurrency handling. The retry logic for inserts and use of WAL mode further enhance database responsiveness. Overall, this version is the most production-ready, scalable, and concurrent-friendly of the three.
 
 
-4. Scalable Unique Random Number Server with Sharded SQLite and Persistent Metadata
+#### 4. Scalable Unique Random Number Server with Sharded SQLite and Persistent Metadata
 
 What it does:
 This implementation builds a fully asynchronous, scalable HTTP API server using FastAPI and SQLite to serve globally unique random numbers, leveraging a sharded architecture and persistent metadata tracking. The /random endpoint returns either a unique integer or a float, depending on the optional type query parameter (int by default). The backend comprises four shard databases (int_shard_0.db, int_shard_1.db, float_shard_0.db, float_shard_1.db) and two persistent metadata databases (used_numbers_int.db, used_numbers_float.db). The metadata DBs track all numbers ever served, ensuring global uniqueness across time and restarts. When a shard is depleted, the system triggers an async refill task that fetches globally unique numbers from the metadata check, refills the shard, and makes it available again. This ensures continuous, non-redundant service even under high demand or restarts.
 
-How to run:
+==>  How to run:
 
 Initialize the shards and metadata databases using:
 
@@ -93,7 +89,7 @@ Initialize the shards and metadata databases using:
 python initialize_shards.py
 This script fills each shard with a set of random numbers (integers or floats) while ensuring that none have been served before, as checked against the metadata databases.
 
-Start the HTTP server with:
+==>  Start the HTTP server with:
 
 
 uvicorn main_http_server:app --port 8000 --reload
@@ -103,7 +99,7 @@ Alternatively, the server script includes a main() method, so you can also run:
 python main_http_server.py
 The FastAPI app will start on http://127.0.0.1:8000.
 
-How to check the HTTP server:
+==>  How to check the HTTP server:
 To request a unique number, open your browser or use curl to access:
 
 
