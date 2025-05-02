@@ -5,7 +5,7 @@ import random               # For randomly choosing between "int" and "float"
 import json                 # To parse JSON response from the server
 
 # Base URL of the FastAPI random number generator service
-BASE_URL = "http://127.0.0.1:5000/random"
+BASE_URL = "http://127.0.0.1:8000/random"
 
 def make_request(req_type):
     """

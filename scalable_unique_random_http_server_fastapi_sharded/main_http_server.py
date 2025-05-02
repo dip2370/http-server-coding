@@ -1,91 +1,88 @@
-"""
-Main HTTP server to expose the `/random` API endpoint.
-This server handles requests for globally unique random numbers,
-manages shard selection dynamically, and ensures scalability through
-asynchronous shard refilling and number serving.
-"""
-
-from fastapi import FastAPI, HTTPException, BackgroundTasks
-import random
+from fastapi import FastAPI, HTTPException
 import asyncio
 import os
+import random
 import sys
 from pathlib import Path
 
-# Add the parent directory to the sys.path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.append(str(PROJECT_ROOT))
 
-from utils.pooled_db_utils import DatabaseUtils  # Updated import
-from shard_manager import ShardManager
+from utils.pooled_db_utils import DatabaseUtils
+from utils.random_number import RandomNumberGenerator
+from initialize_shards import populate_shard
 
-# Initialize FastAPI app
 app = FastAPI()
 
-# Configuration
-NUM_SHARDS = 4  # Total number of shards
-BATCH_SIZE = 1000  # Number of random numbers to populate during refill
-SHARD_DIR = str(PROJECT_ROOT / "shards")  # Shard directory at the parent level
-META_DIR = str(PROJECT_ROOT / "meta")  # Meta directory at the parent level
+NUM_SHARDS = 4
+REFILL_THRESHOLD = 100
+REFILL_BATCH_SIZE = 100
+
+SHARD_DIR = str(PROJECT_ROOT / "shards")
+META_DIR = str(PROJECT_ROOT / "meta")
 INT_META_DB = os.path.join(META_DIR, "used_numbers_int.db")
 FLOAT_META_DB = os.path.join(META_DIR, "used_numbers_float.db")
 
-# Separate shard lists for integers and floats
 ACTIVE_INT_SHARDS = [0, 1]
 ACTIVE_FLOAT_SHARDS = [2, 3]
-
-# Shard Managers for integers and floats
-int_shard_manager = ShardManager(ACTIVE_INT_SHARDS, INT_META_DB, SHARD_DIR)
-float_shard_manager = ShardManager(ACTIVE_FLOAT_SHARDS, FLOAT_META_DB, SHARD_DIR)
-
-@app.get("/random")
-async def random_number_endpoint(background_tasks: BackgroundTasks):
-    active_shards = ACTIVE_INT_SHARDS + ACTIVE_FLOAT_SHARDS
-    if not active_shards:
-        raise HTTPException(
-            status_code=503,
-            detail="No shards are available. System refill is in progress."
-        )
-
-    selected_shard = random.choice(active_shards)
-    shard_db = os.path.join(SHARD_DIR, f"shard_{selected_shard}.db")  # Use SHARD_DIR
-    db_handler = DatabaseUtils(shard_db)
-
-    number = await db_handler.pop_random_number()
-    if number is not None:
-        return {"shard": shard_db, "number": number}
-
-    # --- Shard is empty ---
-    print(f"503: Shard {selected_shard} is empty. Refilling now...")
-
-    if selected_shard in ACTIVE_INT_SHARDS:
-        ACTIVE_INT_SHARDS.remove(selected_shard)
-        background_tasks.add_task(int_shard_manager.refill_shard, selected_shard, BATCH_SIZE)
-    elif selected_shard in ACTIVE_FLOAT_SHARDS:
-        ACTIVE_FLOAT_SHARDS.remove(selected_shard)
-        background_tasks.add_task(float_shard_manager.refill_shard, selected_shard, BATCH_SIZE)
-
-    raise HTTPException(
-        status_code=503,
-        detail=f"Shard {selected_shard} is empty. Refilling, try again later."
-    )
+REQUEST_COUNTER = 0
+REFILL_LOCK = asyncio.Lock()
+REFILL_INDEX = 0
 
 @app.on_event("startup")
-async def startup_event():
-    """
-    Validate shard databases and prepare for runtime use.
-    Do not prepopulate here as it is handled by `initialize_shards.py`.
-    """
+async def on_startup():
     for shard_idx in range(NUM_SHARDS):
-        shard_db = os.path.join(SHARD_DIR, f"shard_{shard_idx}.db")  # Use SHARD_DIR
-        if not os.path.exists(shard_db):
-            raise RuntimeError(f"Shard {shard_db} is missing. Run `initialize_shards.py` first.")
+        shard_path = os.path.join(SHARD_DIR, f"shard_{shard_idx}.db")
+        if not os.path.exists(shard_path):
+            raise RuntimeError(f"Missing shard: {shard_path}")
 
-    print("Server startup complete. Shard databases validated.")
+@app.get("/random")
+async def get_random():
+    global REQUEST_COUNTER, REFILL_INDEX
+    active_shards = ACTIVE_INT_SHARDS + ACTIVE_FLOAT_SHARDS
+    if not active_shards:
+        raise HTTPException(status_code=503, detail="All shards are being refilled")
 
-@app.on_event("shutdown")
-async def shutdown_event():
-    """
-    Handle any cleanup tasks on shutdown. Currently, no specific logic is needed.
-    """
-    print("Server is shutting down...")
+    shard_idx = random.choice(active_shards)
+    shard_path = os.path.join(SHARD_DIR, f"shard_{shard_idx}.db")
+    db = DatabaseUtils(shard_path)
+    number = await db.pop_random_number()
+    
+    if number is None:
+        raise HTTPException(status_code=503, detail=f"Shard {shard_idx} is empty.")
+
+    REQUEST_COUNTER += 1
+
+    # Trigger refill logic
+    if REQUEST_COUNTER >= REFILL_THRESHOLD:
+        async with REFILL_LOCK:
+            if REQUEST_COUNTER >= REFILL_THRESHOLD:  # Double-check inside lock
+                await refill_one_shard()
+                REQUEST_COUNTER = 0
+
+    return {"shard": shard_idx, "number": number}
+
+async def refill_one_shard():
+    global REFILL_INDEX
+    shard_idx = REFILL_INDEX % NUM_SHARDS
+    REFILL_INDEX += 1
+
+    print(f"Refilling shard {shard_idx}...")
+
+    if shard_idx < 2:
+        ACTIVE_INT_SHARDS.remove(shard_idx)
+        meta = INT_META_DB
+    else:
+        ACTIVE_FLOAT_SHARDS.remove(shard_idx)
+        meta = FLOAT_META_DB
+
+    rng = RandomNumberGenerator()
+    await populate_shard(shard_idx, REFILL_BATCH_SIZE, meta, rng)
+
+    # Reactivate shard
+    if shard_idx < 2:
+        ACTIVE_INT_SHARDS.append(shard_idx)
+    else:
+        ACTIVE_FLOAT_SHARDS.append(shard_idx)
+
+    print(f"Shard {shard_idx} refilled and reactivated.")

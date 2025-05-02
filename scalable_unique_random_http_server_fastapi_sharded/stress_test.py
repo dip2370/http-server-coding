@@ -1,52 +1,65 @@
 """
-This script is designed to stress-test the FastAPI server.
-It simulates heavy client traffic by sending a large number of concurrent requests and logs the results.
+Stress test script for FastAPI server.
+Simulates high traffic by sending concurrent requests and logs outcomes.
 """
 
 import requests
-import concurrent.futures  # Used for creating a thread pool to simulate concurrent users
+import concurrent.futures
 import time
-import argparse  # Import the argparse module
+import argparse
+from datetime import datetime
 
-# API endpoint to be tested
-URL = "http://127.0.0.1:8080/random"
+# FastAPI endpoint to test
+URL = "http://127.0.0.1:8585/random"
 
-# Number of concurrent threads to use
-CONCURRENCY = 4  # Typically set to the number of CPU cores for maximum parallelism
+# Default concurrency (adjust to CPU cores or system capability)
+DEFAULT_CONCURRENCY = 4
 
 def fetch(request_id):
     try:
-        response = requests.get(URL, timeout=10)
+        response = requests.get(URL, timeout=100)
         if response.status_code == 200:
             data = response.json()
-            return f"{request_id}: SUCCESS | Shard: {data['shard']} | Value: {data['number']}"
+            return (
+                f"[{request_id}] ✅ SUCCESS | "
+                f"Shard: {data.get('shard')} | "
+                f"Value: {data.get('number')} | "
+                f"Refill: {data.get('refill_status', 'N/A')}"
+            )
         else:
-            # Log the error status and body (if JSON or text)
-            try:
-                error_detail = response.json().get("detail", response.text)
-            except Exception:
-                error_detail = response.text
-            return f"{request_id}: FAIL | Status: {response.status_code} | Detail: {error_detail}"
+            detail = response.json().get("detail", response.text)
+            return f"[{request_id}] ❌ FAIL | Status: {response.status_code} | Detail: {detail}"
+    except requests.exceptions.Timeout:
+        return f"[{request_id}] ⚠️ TIMEOUT"
     except Exception as e:
-        return f"{request_id}: EXCEPTION | {str(e)}"
+        return f"[{request_id}] 🚨 EXCEPTION | {str(e)}"
+
+def main(num_requests, concurrency):
+    print(f"🚀 Starting load test with {num_requests} requests using {concurrency} threads...\n")
+    start_time = time.time()
+
+    results = []
+    with concurrent.futures.ThreadPoolExecutor(max_workers=concurrency) as executor:
+        futures = {executor.submit(fetch, i): i for i in range(num_requests)}
+        for future in concurrent.futures.as_completed(futures):
+            result = future.result()
+            print(result)
+            results.append(result)
+
+    duration = time.time() - start_time
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    log_filename = f"stress_log_{timestamp}.txt"
+
+    with open(log_filename, "w") as log_file:
+        log_file.write("\n".join(results))
+
+    print(f"\n✅ Load test completed in {duration:.2f} seconds.")
+    print(f"📝 Results saved to {log_filename}")
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Stress test the FastAPI server.")
-    parser.add_argument("--num_requests", type=int, default=16000, help="Total number of requests to send (default: 16000)")
+    parser.add_argument("--num_requests", type=int, default=1600, help="Total number of requests to send (default: 1600)")
+    parser.add_argument("--concurrency", type=int, default=DEFAULT_CONCURRENCY, help="Number of concurrent threads (default: 4)")
     args = parser.parse_args()
 
-    start_time = time.time()
-    print(f"Starting load test with {args.num_requests} requests across {CONCURRENCY} threads...")
-
-    # Use a ThreadPoolExecutor to simulate concurrent requests
-    with concurrent.futures.ThreadPoolExecutor(max_workers=CONCURRENCY) as executor:
-        # Map each request to a worker thread
-        results = list(executor.map(fetch, range(args.num_requests)))
-
-    # Write the results to a log file for post-test analysis
-    with open("stress_log.txt", "w") as log_file:
-        log_file.write("\n".join(results))
-
-    total_time = time.time() - start_time
-    print(f"Finished load test in {total_time:.2f} seconds.")
-    print("Results saved to stress_log.txt")
+    main(args.num_requests, args.concurrency)
